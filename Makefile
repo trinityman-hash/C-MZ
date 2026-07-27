@@ -1,10 +1,12 @@
 # Host-only build/test path for the portable fault-injection core
 # (src/fault_inject.c), exercised through the host stub port
 # (tests/host/fi_port_host.c -- NOT a real RTOS adapter, see that
-# file). This does not build or verify either RTOS adapter; that
-# requires each RTOS's own toolchain (west/Twister for Zephyr, RIOT's
-# own build system for RIOT-OS) and lives under adapters/ once those
-# exist, per docs/planning.md.
+# file). This does not build or verify either RTOS adapter -- both now
+# exist and are verified (see docs/verification.md), but that requires
+# each RTOS's own toolchain (west/Twister for Zephyr, RIOT's own build
+# system for RIOT-OS): `west twister -T tests/zephyr/eswifi_recv` and
+# `RIOTBASE=/path/to/RIOT BOARD=native make` under tests/riot/, per
+# README.md.
 
 CC = gcc
 INC = -Iinclude
