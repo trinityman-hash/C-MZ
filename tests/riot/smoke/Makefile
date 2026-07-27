@@ -1,9 +1,10 @@
-# RIOT-OS adapter smoke test (docs/planning.md step 5): proves
-# adapters/riot/fi_port_riot.c actually compiles and links against a
-# real RIOT-OS checkout, and that the portable core behaves correctly
-# through it -- not the same thing as a host-only build with the no-op
-# stub port (tests/host/), and not yet the real bug-reproduction proof
-# case planning.md step 6 still calls for.
+# RIOT-OS adapter smoke test: proves adapters/fault_inject/fi_port_riot.c
+# actually compiles and links against a real RIOT-OS checkout, and that
+# the portable core behaves correctly through it -- not the same thing
+# as a host-only build with the no-op stub port (tests/host/), and not
+# the real bug-reproduction proof case (that's
+# ../nimble_scanlist_recv/, the CVE-2024-32018 regression proof; see
+# docs/verification.md).
 #
 # This app lives outside any RIOT-OS checkout (RIOT is not vendored
 # into this repo), so RIOTBASE must be supplied by the caller, e.g.:
