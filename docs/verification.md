@@ -451,3 +451,61 @@ reasoning as the "no Clang" and other caveats elsewhere in this log.
   wasn't investigated further than that -- if RIOT-OS ASan work
   continues in this project, that warning is worth understanding
   properly rather than re-confirming per-test each time.
+
+## Post-completion consistency audit
+
+The steps 3-7 commit's own message claimed `docs/planning.md` had been
+deleted and everything above was in place. A fresh session (no
+Zephyr/RIOT toolchain available, so unable to re-run any of the builds
+above) checked that claim against the actual repo state instead of
+trusting the commit message, and found several things asserted as done
+that weren't:
+
+- `docs/planning.md` was still present, byte-identical to the original
+  scaffolding commit -- not deleted, contradicting both that commit
+  message and README.md's own "has been deleted per its own final
+  step" claim. Now actually deleted.
+- Three files (`zephyr/module.yml`, `adapters/zephyr/CMakeLists.txt`,
+  `adapters/zephyr/Kconfig`) carried an `SPDX-License-Identifier:
+  Apache-2.0` header with no `LICENSE` file in the repo to back it --
+  directly contradicting README's explicit "No SPDX headers are
+  present in any file in this repo" statement. Removed.
+- `include/fi_port.h` was never updated once the adapters existed,
+  despite its own comment explicitly saying to fix it once they did:
+  it still called both adapters "not yet written," pointed at a
+  nonexistent `adapters/riot/` path, and called both port-fit
+  assumptions unverified. Rewritten to match reality.
+- Several files (`Makefile`, `include/fault_inject.h`,
+  `adapters/zephyr/CMakeLists.txt`, `adapters/zephyr/Kconfig`,
+  `tests/riot/smoke/Makefile`) pointed at `docs/planning.md` for
+  information that document no longer holds (now that it's deleted) or
+  never held in the way claimed (`tests/riot/smoke/Makefile` said the
+  RIOT bug-reproduction case "not yet" existed, after it already did).
+  Fixed to point at README.md/docs/verification.md, or to state the
+  fact directly instead of deferring to a file.
+- `tests/zephyr/eswifi_recv/src/test_eswifi_recv_ztest.c`'s header
+  claimed this proof was "already verified on the host" and pointed at
+  `tests/drivers/eswifi_recv/src/...` -- a path that exists only in
+  C-MSP (and there, is itself a Zephyr Ztest, not a host run). There is
+  no host-only run of this specific bug scenario anywhere; corrected to
+  say so.
+
+Every fix above was a doc/comment change verified by direct comparison
+against the actual current file contents and directory tree (not
+assumed from the diff or the commit message), plus a full re-run of
+`make test` afterward to confirm the header edits to `fault_inject.h`/
+`fi_port.h` didn't regress the one thing in this repo that could still
+be checked without an RTOS toolchain: still 21/21 checks passing, clean
+under ASan/UBSan. Historical `(docs/planning.md step N)` labels
+elsewhere in this log and in a few adapter/test file headers were
+deliberately left alone -- this log is itself append-only by its own
+stated convention, and those labels still convey real ordering
+information without asking a reader to go find a file that's gone.
+
+What this audit does *not* newly establish: none of the actual
+build/test claims in the "Steps 3-7" section above were re-run in this
+session (no Zephyr/RIOT toolchain was available). This was a
+correctness-of-record pass -- does the repo actually say what's true
+about itself -- not a re-verification of the underlying engineering
+claims, which stand as documented above unless a future session with
+real toolchain access finds otherwise.
