@@ -1,47 +1,181 @@
 # C-MZ — Portable Fault-Injection Core for Embedded/RTOS Systems
 
-**Status: planning/scaffolding stage.** Nothing is built yet — see
-`docs/planning.md` for the live status, design decisions, and exact next
-steps. This file will be rewritten properly once there's real, verified
-work to describe (see [C-MSP](https://github.com/trinityman-hash/C-MSP)
-for what that looks like when it's done).
+A small, deterministic fault-injection primitive — arm/disarm/hit-count,
+compiles to nothing when disabled — generalized out of
+[C-MSP](https://github.com/trinityman-hash/C-MSP)'s Zephyr-only
+implementation into a portable core plus a small porting layer, with
+real adapters for **two** independent RTOSes on top of it: **Zephyr**
+and **RIOT-OS**.
 
-## What this is
+## Why a portable core, and why two RTOSes specifically
 
-A generalization of the deterministic fault-injection primitive built in
-[C-MSP](https://github.com/trinityman-hash/C-MSP) — arm/disarm/hit-count,
-compiles to nothing when disabled — pulled out of its Zephyr-only form
-into a portable core with a small, explicit porting layer, plus adapters
-for individual RTOSes on top of it.
+A fault point lets a test force a specific call to fail, or return an
+externally-controlled bad value, deterministically — so an
+error-recovery path can be proven to actually work instead of just
+assumed to. C-MSP proved that idea out for Zephyr. This repo generalizes
+it: the registry logic (`src/fault_inject.c`) has zero RTOS-specific
+code, and talks to whatever RTOS it's running under through a two-
+function porting interface (`include/fi_port.h`) instead.
 
-Planned v0 scope: the portable core, plus exactly two adapters —
-**Zephyr** (porting the already-proven C-MSP implementation onto the new
-core) and **RIOT-OS** (a second real target, chosen because of evidenced,
-recurring test-reliability pain in that project's own issue history, not
-picked arbitrarily).
-
-## Why a second RTOS matters here
-
-A "portable" library that's only ever run against one RTOS hasn't
-actually proven it's portable — the porting layer's assumptions stay
-untested. RIOT-OS is the deliberate stress test: different locking
-primitives, different build system, different conventions. If the same
-core works cleanly against both without Zephyr-specific assumptions
-leaking through, that's real evidence, not a claim.
+A "portable" core that's only ever been built against one RTOS hasn't
+actually demonstrated portability — its porting-layer assumptions stay
+untested. RIOT-OS is the deliberate second data point, chosen for a real
+reason: while researching C-MSP's Zephyr issue outreach, RIOT-OS's own
+issue history turned up a recurring, evidenced pattern of tests passing
+while the device had actually hard-faulted, plus several separate
+nondeterministic-failure/CI-reliability issues with no systematic
+tooling behind them. Not picked arbitrarily.
 
 ## Relationship to C-MSP
 
 C-MSP stays as-is — a complete, working, Zephyr-specific proof of the
-underlying idea, plus the CVE-2026-1679 reproduction that demonstrates
-why it matters. This repo doesn't replace it; it generalizes the
-primitive C-MSP proved out. Where a design choice here contradicts a
-lesson learned there, C-MSP's `docs/verification.md` is the tie-breaker.
+underlying idea, plus its own CVE-2026-1679 reproduction. This repo
+doesn't replace it; it generalizes the primitive C-MSP proved out, and
+re-runs that same CVE-2026-1679 proof against the new, generalized core
+as a regression check (see `docs/verification.md`). Where a design
+choice here ever conflicted with a hard lesson from C-MSP's own
+`docs/verification.md`, C-MSP won.
 
-## Contributing / picking this back up
+## Quick start
 
-Full context, current status, and exact next steps live in
-`docs/planning.md`. Read that before doing anything else — it's written
-so a fresh session (human or Claude) can resume without re-deriving
-context. It will be deleted once the project is complete and this
-README has been rewritten to describe a finished thing instead of a
-plan.
+**Host-only, no RTOS needed** (fastest way to see the core itself work):
+```sh
+make test
+```
+Builds and runs two binaries under ASan+UBSan against the core's own
+registry logic (`src/fault_inject.c`) via a no-op stub port — a fast
+correctness check of the core in isolation, *not* proof of portability
+(that requires the two real adapters below).
+
+**Zephyr, via Twister** (real critical-section locking, `k_spin_lock`):
+```sh
+west twister -p native_sim -T tests/zephyr/eswifi_recv \
+  -x=ZEPHYR_EXTRA_MODULES=/path/to/this/repo
+```
+Runs the CVE-2026-1679 regression proof (ported from C-MSP) as a genuine
+Ztest suite on `native_sim`. Needs `cmake`, `ninja`,
+`device-tree-compiler`, `gcc-multilib` (native_sim defaults to a 32-bit
+build on x86_64), and `ZEPHYR_TOOLCHAIN_VARIANT=host` — no Zephyr SDK or
+physical hardware.
+
+**RIOT-OS, via its own build system** (real critical-section locking,
+`irq_disable`/`irq_restore`):
+```sh
+RIOTBASE=/path/to/RIOT BOARD=native make
+```
+run from `tests/riot/smoke/` (adapter smoke test) or
+`tests/riot/nimble_scanlist_recv/` (the CVE-2024-32018 regression
+proof — a real bug, found by actual research, not invented; see
+`docs/verification.md`). No cross-compiler or physical hardware needed
+for `BOARD=native`.
+
+## Usage
+
+```c
+#include "fault_inject.h"
+
+int eswifi_socket_recv(struct eswifi_socket *sock, struct eswifi_hw_mock *hw,
+                        const uint8_t *hw_data)
+{
+    /* Normally: eswifi_hw_read_length(hw). A test can arm
+     * FI_ESWIFI_RECV_LEN to substitute an attacker/hardware-controlled
+     * value here instead, without touching eswifi_hw_read_length at all. */
+    int len = FI_POINT(FI_ESWIFI_RECV_LEN, eswifi_hw_read_length(hw));
+
+    if (len < 0 || (size_t)len > sizeof(sock->rx_buf)) {
+        return ESWIFI_EMSGSIZE;
+    }
+
+    memcpy(sock->rx_buf, hw_data, (size_t)len);
+    sock->rx_len = (size_t)len;
+    return ESWIFI_OK;
+}
+```
+
+From the test side (identical on Zephyr/Ztest, RIOT, or the host
+harness — this is the whole point of the porting layer):
+```c
+fi_arm(FI_ESWIFI_RECV_LEN, 9999);      /* force an oversized length */
+/* assert the call now safely rejects it, instead of overflowing */
+fi_disarm(FI_ESWIFI_RECV_LEN);
+```
+
+Full API in `include/fault_inject.h`: `fi_arm`, `fi_disarm`,
+`fi_reset_all`, `fi_hit_count`, `fi_should_fail`, and the `FI_POINT`
+macro itself. Each RTOS adapter implements exactly two functions
+(`include/fi_port.h`): `fi_port_lock()` / `fi_port_unlock()`.
+
+## How this is verified
+
+Every claim above — both adapters' locking assumptions checked against
+real upstream source, both regression proofs' fixed variant passing and
+buggy variant genuinely crashing under a sanitizer at the exact injected
+fault, and two real build-system bugs found and fixed by actually
+linking real applications rather than by re-reading the code — was
+actually run, not asserted. Full commands and real output:
+**`docs/verification.md`**.
+
+## Status
+
+All of steps 1–8 from the original roadmap are complete and verified —
+portable core, host harness, both adapters, both regression proofs. See
+`docs/verification.md` for the real evidence.
+
+Deliberately not done, per the project's own v0 scope, not missing work:
+- More than two RTOS adapters (no FreeRTOS, NuttX, etc.)
+- Probabilistic/interval/budget-based failure, a Shell live-arming
+  interface, additional fault kinds beyond "force a return value" — all
+  already out of scope for C-MSP itself, carried forward here
+- Any board/platform beyond `native_sim` (Zephyr) and `BOARD=native`
+  (RIOT-OS) — no QEMU, no physical hardware, either RTOS
+- Multi-core targets for either RTOS — both adapters' locking reasoning
+  is explicitly single-core only (see each adapter's own file comments)
+- CI wiring — every command in `docs/verification.md` was run by hand
+  in the session that produced it, not on a schedule or on push
+- A LICENSE file. No SPDX header claims a license this repo doesn't
+  actually have attached — this is an open decision for the repo owner,
+  not an oversight (C-MSP's own handoff history records a prior session
+  wrongly claiming a LICENSE file existed; not repeating that here)
+- Publishing or announcing this anywhere, including upstream against
+  either project's issue tracker
+
+## Layout
+
+```
+include/
+  fault_inject.h            public API (fi_arm, fi_disarm, fi_hit_count,
+                             fi_reset_all, fi_should_fail, FI_POINT)
+  fi_port.h                 porting interface each adapter implements
+src/
+  fault_inject.c             portable registry -- zero RTOS-specific code,
+                              calls fi_port_lock()/fi_port_unlock() only
+Makefile                     host-only build (make test) -- no RTOS required
+adapters/
+  zephyr/                    fi_port_zephyr.c, Kconfig, CMakeLists.txt
+  fault_inject/               RIOT-OS module: fi_port_riot.c, Makefile,
+                              Makefile.include (directory name is the
+                              module name -- required by RIOT's own
+                              module discovery, see that Makefile)
+zephyr/module.yml             west module declaration (points at adapters/zephyr)
+tests/
+  host/                       host-only verification harness for the core
+                              (no-op stub port -- not one of the two real
+                              adapters)
+  zephyr/eswifi_recv/         CVE-2026-1679 regression proof, ported from
+                              C-MSP, re-run against this repo's core+adapter
+  riot/smoke/                 RIOT-OS adapter smoke test
+  riot/nimble_scanlist_recv/  CVE-2024-32018 regression proof (real bug,
+                              found by research -- see docs/verification.md)
+docs/
+  verification.md             full real-command/real-output verification log
+```
+
+`docs/planning.md`, the working scratchpad this project was built from,
+has been deleted per its own final step now that the work it was
+tracking is done — its content lives on in this README and in
+`docs/verification.md`'s real results.
+
+## License
+
+Not yet chosen — see "Status" above. No SPDX headers are present in any
+file in this repo for the same reason.

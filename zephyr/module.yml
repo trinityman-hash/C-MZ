@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# west only ever looks for this file at <module-root>/zephyr/module.yml,
+# so it has to live here even though the actual Zephyr build glue
+# (CMakeLists.txt, Kconfig, fi_port_zephyr.c) is scoped under
+# adapters/zephyr/ alongside this repo's other adapter. `cmake:` and
+# `kconfig:` below are resolved relative to the repo root, per
+# https://docs.zephyrproject.org/latest/develop/modules.html -- verified
+# against that doc directly, not assumed.
+name: fault_inject
+build:
+  cmake: adapters/zephyr
+  kconfig: adapters/zephyr/Kconfig

@@ -1,0 +1,5 @@
+# Host test build output (root Makefile).
+/build/
+
+# RIOT app build output (BINDIR default is ./bin under each app dir).
+bin/

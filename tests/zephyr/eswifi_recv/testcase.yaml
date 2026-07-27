@@ -1,0 +1,24 @@
+# Deliberately only one permanent Twister entry (drivers.eswifi_recv.fixed).
+# The "buggy" variant is meant to crash under ASan -- proof the
+# regression check actually catches the bug, not a green suite entry --
+# and is built/run once by hand instead (see docs/verification.md),
+# same reasoning C-MSP used for its own copy of this test.
+
+common:
+  tags:
+    - fault_injection
+    - drivers
+    - portable_core_regression
+  platform_allow:
+    - native_sim
+  harness: ztest
+  extra_configs:
+    - CONFIG_FAULT_INJECTION=y
+    - CONFIG_FAULT_INJECTION_MAX_POINTS=8
+    - CONFIG_ASAN=y
+    - CONFIG_UBSAN=y
+
+tests:
+  drivers.eswifi_recv.fixed:
+    extra_args:
+      - ESWIFI_RECV_VARIANT=fixed

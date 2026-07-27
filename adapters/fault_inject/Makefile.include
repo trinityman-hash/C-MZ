@@ -1,0 +1,12 @@
+# Exports the portable core's public headers (fault_inject.h, fi_port.h)
+# to any application that pulls in USEMODULE += fault_inject.
+#
+# RIOT's build includes this file with `-include`, evaluated in the
+# top-level application's make context, not with CURDIR set to this
+# directory -- so a plain relative path here would resolve against the
+# wrong base. $(lastword $(MAKEFILE_LIST)) is this file's own path
+# regardless of who included it, which is what makes
+# $(dir $(lastword $(MAKEFILE_LIST))) reliable here.
+FAULT_INJECT_RIOT_ADAPTER_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+
+USEMODULE_INCLUDES += $(abspath $(FAULT_INJECT_RIOT_ADAPTER_DIR)/../../include)
