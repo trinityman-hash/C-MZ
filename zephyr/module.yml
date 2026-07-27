@@ -1,5 +1,3 @@
-# SPDX-License-Identifier: Apache-2.0
-
 # west only ever looks for this file at <module-root>/zephyr/module.yml,
 # so it has to live here even though the actual Zephyr build glue
 # (CMakeLists.txt, Kconfig, fi_port_zephyr.c) is scoped under
