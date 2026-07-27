@@ -1,5 +1,3 @@
-# SPDX-License-Identifier: Apache-2.0
-
 if(CONFIG_FAULT_INJECTION)
 
   # Real enforcement of "must not ship in a non-test build": a Kconfig
@@ -11,7 +9,7 @@ if(CONFIG_FAULT_INJECTION)
     message(FATAL_ERROR
       "CONFIG_FAULT_INJECTION=y outside a Ztest build. This module's "
       "design requires fault injection to be physically absent from "
-      "non-test images -- see docs/planning.md and Kconfig for why. If "
+      "non-test images -- see README.md and Kconfig for why. If "
       "you have a legitimate new consumer, that's a deliberate decision "
       "to make, not something to bypass here.")
   endif()
