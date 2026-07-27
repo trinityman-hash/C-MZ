@@ -1,10 +1,15 @@
 /* test_eswifi_recv.c (Ztest)
  *
- * Zephyr/Ztest port of the same proof case already verified on the host
- * (see tests/drivers/eswifi_recv/src/... and the top-level README for
- * the host-only run). Same assertions, same fault-injection primitive,
- * now built and run as a real Zephyr test image on native_sim via
- * `west twister`.
+ * Ported from C-MSP's own Zephyr/Ztest version of this proof
+ * (https://github.com/trinityman-hash/C-MSP/tree/main/tests/drivers/eswifi_recv),
+ * rebuilt here against this repo's portable core + adapters/zephyr/
+ * instead of C-MSP's monolithic Zephyr-only fault_inject.c -- the
+ * regression check docs/verification.md's "Zephyr CVE-2026-1679
+ * regression check" section covers. There is no host-only run of this
+ * specific eswifi_recv scenario in this repo; tests/host/ verifies the
+ * generic core logic in isolation (arm/disarm/hit-count/reset), not
+ * this bug pattern specifically -- this Ztest suite is the only place
+ * that scenario is exercised.
  *
  * This file is compiled against either eswifi_repro_buggy.c or
  * eswifi_repro_fixed.c -- selected by the ESWIFI_RECV_VARIANT CMake
