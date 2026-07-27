@@ -1,5 +1,3 @@
-# SPDX-License-Identifier: Apache-2.0
-
 menuconfig FAULT_INJECTION
 	bool "Fault injection test hooks"
 	default n
@@ -11,7 +9,7 @@ menuconfig FAULT_INJECTION
 	  a disabled check.
 
 	  This is the Zephyr adapter for the portable fault-injection core
-	  (see the repo root's docs/planning.md); the registry itself
+	  (see the repo root's README.md); the registry itself
 	  (src/fault_inject.c) is RTOS-agnostic, and this Kconfig only
 	  covers what the Zephyr build integration needs.
 
