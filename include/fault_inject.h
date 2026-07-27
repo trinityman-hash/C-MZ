@@ -9,7 +9,8 @@
  * section comes from -- see fi_port.h. This file is deliberately close
  * to a straight copy of C-MSP's version; don't "improve" it without a
  * reason tied to portability, since C-MSP's version is the proven
- * reference (docs/planning.md is the tie-breaker on any conflict).
+ * reference -- its own docs/verification.md is the tie-breaker on any
+ * conflict.
  *
  * A "fault point" is a macro dropped at a call site that could plausibly
  * fail (or, as in C-MSP's repro, at a call site that returns an
