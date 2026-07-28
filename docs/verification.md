@@ -4,7 +4,11 @@ Living document, same spirit as
 [C-MSP's `docs/verification.md`](https://github.com/trinityman-hash/C-MSP/blob/main/docs/verification.md):
 real commands, run for real, output pasted as produced -- not
 hand-written or assumed. Append to this, don't rewrite history out of
-it, as more steps from `docs/planning.md` get verified.
+it, as more work on this project gets verified. Originally tracked
+against `docs/planning.md`'s step list while that file existed (steps
+1-10, all now complete -- see the "Post-completion consistency audit"
+section below for why that file itself is gone); nothing here needs
+that doc to be read correctly, each section states its own scope.
 
 ## Step 1 + 2: portable core + host stub port
 
@@ -509,3 +513,34 @@ correctness-of-record pass -- does the repo actually say what's true
 about itself -- not a re-verification of the underlying engineering
 claims, which stand as documented above unless a future session with
 real toolchain access finds otherwise.
+
+## Second consistency pass (full re-download + grep of every file)
+
+Requested explicitly: re-check literally everything, not just the
+files already touched. Downloaded all 30 tracked files fresh and
+grepped all of them for the same patterns as the first pass
+(`docs/planning.md`, `SPDX`, stale `adapters/riot` paths, TODO/FIXME).
+Also re-ran `make test` again against the current tree: still 21/21,
+clean under ASan/UBSan.
+
+One real miss from the first pass, found this way:
+`adapters/fault_inject/fi_port_riot.c` -- never edited in the first
+audit pass, so it still pointed at "docs/planning.md's out-of-scope
+list" for the multi-core caveat. Fixed to point at README.md's
+"Status" section, which now documents that list. Also softened this
+file's own preamble (above) and `tests/host/test_fault_inject_core.c`'s
+header comment, both of which cited `docs/planning.md` for information
+that's true independent of that file's existence.
+
+Everything else the sweep flagged was re-checked in context and left
+alone deliberately: historical `(docs/planning.md step N)` labels in
+`adapters/zephyr/fi_port_zephyr.c`, `adapters/fault_inject/fi_port_riot.c`,
+`tests/riot/nimble_scanlist_recv/src/scanlist_repro.h`,
+`tests/riot/nimble_scanlist_recv/Makefile`, and
+`tests/zephyr/eswifi_recv/src/eswifi_repro.h` -- all still convey
+correct ordering information without asserting the file exists.
+`adapters/fault_inject/Makefile`'s mention of `adapters/riot/Makefile`
+is intentional past-tense history (explaining why the directory isn't
+called that anymore), not a current claim. The `SPDX` and
+`adapters/riot` hits inside this file are this log's own record of
+those bugs, not live instances of them.
