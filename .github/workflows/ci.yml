@@ -81,6 +81,18 @@ jobs:
           pip install -r zephyr/scripts/requirements.txt
           west zephyr-export
 
+      # Added after a 2026-07-28 run failed with:
+      #   CMake Error: Could not find a package configuration file
+      #   provided by "Zephyr-sdk" (requested version 1.0)
+      # west update only pulls source; it does not install the actual
+      # SDK toolchain. x86_64-zephyr-elf is the toolchain native_sim
+      # needs (confirmed against docs.zephyrproject.org's west sdk
+      # install documentation, 2026-07-28).
+      - name: Install Zephyr SDK toolchain (x86_64, for native_sim)
+        working-directory: workspace
+        run: |
+          west sdk install --toolchains x86_64-zephyr-elf
+
       - name: Run the one permanent Twister entry (fixed variant)
         working-directory: workspace
         run: |
