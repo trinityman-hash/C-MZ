@@ -3,12 +3,13 @@
  * Unit tests for the portable core (src/fault_inject.c) itself, run
  * against the host stub port (fi_port_host.c) -- see the warning in
  * that file about why it's not a real adapter. This is NOT a proof of
- * portability (that requires the Zephyr and RIOT-OS adapters, per
- * docs/planning.md) -- it's the fastest way to verify the core's
- * registry logic and the FI_POINT contract are actually correct before
- * porting anything onto it. Ported adapters must still get their own
- * real-target verification (docs/planning.md step 4: the
- * CVE-2026-1679 regression check against the Zephyr adapter).
+ * portability -- that requires the Zephyr and RIOT-OS adapters, both
+ * of which now exist and are verified for real (docs/verification.md)
+ * -- it's the fastest way to verify the core's registry logic and the
+ * FI_POINT contract are actually correct before porting anything onto
+ * it. Ported adapters must still get their own real-target
+ * verification (the CVE-2026-1679 and CVE-2024-32018 regression checks
+ * documented there).
  *
  * No test framework dependency, matching C-MSP's host-only style
  * (tests/drivers/eswifi_recv/src/test_eswifi_recv.c).
