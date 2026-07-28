@@ -6,11 +6,11 @@
  * section, get back an opaque token representing prior state, restore
  * it on exit.
  *
- * fi_port_key_t <-> RIOT's irq state verification (docs/planning.md
- * step 5): fi_port.h flagged this as "asserted with reasonable
- * confidence... not yet verified by an actual RIOT-OS build." Checked
- * for real against RIOT-OS/RIOT, master branch,
- * core/lib/include/irq.h, fetched 2026-07-26:
+ * fi_port_key_t <-> RIOT's irq state verification: fi_port.h originally
+ * flagged this as "asserted with reasonable confidence... not yet
+ * verified by an actual RIOT-OS build." Checked for real against
+ * RIOT-OS/RIOT, master branch, core/lib/include/irq.h, fetched
+ * 2026-07-26:
  *
  *   unsigned irq_disable(void);
  *   void     irq_restore(unsigned state);
@@ -29,8 +29,8 @@
  * public function takes it once, unlocks it once), so a single global
  * IRQ-disable per call is sufficient and matches how RIOT code
  * elsewhere protects short critical sections. Multi-core RIOT targets
- * are out of scope for v0 -- see docs/planning.md's out-of-scope list --
- * and would need revisiting this if that ever changes.
+ * are out of scope for v0 -- see README.md's "Status" section -- and
+ * would need revisiting this if that ever changes.
  */
 
 #include "fi_port.h"
