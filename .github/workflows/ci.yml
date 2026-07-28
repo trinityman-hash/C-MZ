@@ -64,6 +64,16 @@ jobs:
         with:
           path: c-mz
 
+      # native_sim compiles 32-bit by default; ubuntu-latest only ships
+      # 64-bit glibc dev headers, which surfaces as a confusing
+      # "bits/libc-header-start.h: No such file or directory" deep in a
+      # ninja build, not as a missing-toolchain error. This is the
+      # standard, well-documented fix.
+      - name: Install 32-bit multilib headers (native_sim default target)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y gcc-multilib g++-multilib
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -161,22 +171,27 @@ jobs:
             exit 1
           fi
 
+      # NOTE: this job runs in a `container:`, where ${{ github.workspace }}
+      # and $GITHUB_WORKSPACE are known to diverge (documented upstream:
+      # actions/checkout#785). That's exactly why Verify above passed while
+      # this step kept failing on the same path -- they were never the same
+      # string. Using $GITHUB_WORKSPACE consistently below fixes it.
       - name: Adapter smoke test
         working-directory: c-mz/tests/riot/smoke
         run: |
-          RIOTBASE=${{ github.workspace }}/RIOT BOARD=native make all
+          RIOTBASE=$GITHUB_WORKSPACE/RIOT BOARD=native make all
           ./bin/native*/fault_inject_riot_smoke.elf
 
       - name: CVE-2024-32018 regression -- fixed variant (must pass)
         working-directory: c-mz/tests/riot/nimble_scanlist_recv
         run: |
-          RIOTBASE=${{ github.workspace }}/RIOT BOARD=native make all
+          RIOTBASE=$GITHUB_WORKSPACE/RIOT BOARD=native make all
           ./bin/native*/nimble_scanlist_recv.elf
 
       - name: CVE-2024-32018 regression -- buggy variant must still crash under ASan
         working-directory: c-mz/tests/riot/nimble_scanlist_recv
         run: |
-          RIOTBASE=${{ github.workspace }}/RIOT BOARD=native SCANLIST_REPRO_VARIANT=buggy make all-asan
+          RIOTBASE=$GITHUB_WORKSPACE/RIOT BOARD=native SCANLIST_REPRO_VARIANT=buggy make all-asan
           if ./bin/native*/nimble_scanlist_recv.elf; then
             echo "::error::buggy variant did not crash -- the regression proof no longer proves anything"
             exit 1
