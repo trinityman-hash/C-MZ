@@ -62,8 +62,12 @@ jobs:
           west init -m https://github.com/zephyrproject-rtos/zephyr --mr main workspace
           cd workspace
           west update
-          west zephyr-export
+       run: |
+          west init -m https://github.com/zephyrproject-rtos/zephyr --mr main workspace
+          cd workspace
+          west update
           pip install -r zephyr/scripts/requirements.txt
+          west zephyr-export
 
       - name: Run the one permanent Twister entry (fixed variant)
         working-directory: workspace
@@ -110,7 +114,20 @@ jobs:
         with:
           repository: RIOT-OS/RIOT
           path: RIOT
-
+          
+      - name: Verify checkouts landed where expected
+        run: |
+          echo "--- \$GITHUB_WORKSPACE ($GITHUB_WORKSPACE) ---"
+          ls -la "$GITHUB_WORKSPACE"
+          echo "--- c-mz ---"
+          ls -la "$GITHUB_WORKSPACE/c-mz" 2>&1 || echo "c-mz MISSING"
+          echo "--- RIOT ---"
+          ls -la "$GITHUB_WORKSPACE/RIOT" 2>&1 || echo "RIOT MISSING"
+          if [ ! -f "$GITHUB_WORKSPACE/RIOT/Makefile.include" ]; then
+            echo "::error::RIOT checkout did not land at \$GITHUB_WORKSPACE/RIOT as expected -- see the listing above for what's actually there"
+            exit 1
+          fi
+          
       - name: Adapter smoke test
         working-directory: c-mz/tests/riot/smoke
         run: |
