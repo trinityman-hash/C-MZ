@@ -1,0 +1,134 @@
+name: ci
+
+# What each job here actually establishes -- read before trusting a
+# green checkmark, same discipline as docs/verification.md:
+#
+# - `host`: the exact commands from docs/verification.md's "Step 1 + 2"
+#   section, on the same OS image family (ubuntu-latest is Ubuntu
+#   24.04, matching the "Ubuntu 24.04 container, gcc 13.3.0" this was
+#   verified under by hand). This job is a direct, faithful
+#   reproduction of an already-verified run.
+#
+# - `zephyr` and `riot`: the exact commands from docs/verification.md's
+#   "Steps 3-7" section (the west/RIOT invocations there are copied
+#   verbatim below, including the `-x=ZEPHYR_EXTRA_MODULES=<abs path>`
+#   pattern that session confirmed works with a module directory
+#   outside the west workspace). What's NOT established by this file
+#   existing: that these two jobs actually succeed on a GitHub-hosted
+#   runner. No session that has written to this repo has had the
+#   ability to trigger or observe a real GitHub Actions run -- every
+#   verification in docs/verification.md was done by hand, in a
+#   sandbox, not through this workflow. Treat these two jobs as a
+#   correctly-researched first attempt, not a proven-passing gate,
+#   until an actual run's logs are looked at and, if anything fails,
+#   fixed the same way the RIOT adapter's two real build bugs were:
+#   by reading the actual failure, not by re-deriving from the command
+#   pattern harder.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  host:
+    name: portable core (host, gcc, ASan+UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build and run host test suite
+        run: make test
+
+  zephyr:
+    name: Zephyr adapter (native_sim, Twister, CVE-2026-1679 regression)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: c-mz
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install west
+        run: pip install west
+
+      - name: Init and update a Zephyr workspace (T3 topology -- this
+          repo is a module, not a manifest repo, so zephyr's own
+          west.yml is the manifest)
+        run: |
+          west init -m https://github.com/zephyrproject-rtos/zephyr --mr main workspace
+          cd workspace
+          west update
+          west zephyr-export
+          pip install -r zephyr/scripts/requirements.txt
+
+      - name: Run the one permanent Twister entry (fixed variant)
+        working-directory: workspace
+        run: |
+          west twister -p native_sim \
+            -T ${{ github.workspace }}/c-mz/tests/zephyr/eswifi_recv \
+            -x=ZEPHYR_EXTRA_MODULES=${{ github.workspace }}/c-mz \
+            --inline-logs
+
+      # The buggy variant is deliberately not a Twister entry (see
+      # tests/zephyr/eswifi_recv/testcase.yaml's own comment) -- it's
+      # expected to crash under ASan, which is the actual proof for
+      # that half of the regression check, not a green checkmark. This
+      # step asserts that crash keeps happening: if the vulnerable code
+      # path is ever accidentally fixed-by-refactor or the fault point
+      # stops being reached, this step should start failing, which is
+      # the point.
+      - name: Confirm the buggy variant still genuinely crashes under ASan
+        working-directory: workspace
+        run: |
+          west build -p always -b native_sim \
+            ${{ github.workspace }}/c-mz/tests/zephyr/eswifi_recv \
+            -d build_buggy -- \
+            -DZEPHYR_EXTRA_MODULES=${{ github.workspace }}/c-mz \
+            -DESWIFI_RECV_VARIANT=buggy \
+            -DCONFIG_FAULT_INJECTION=y -DCONFIG_FAULT_INJECTION_MAX_POINTS=8 \
+            -DCONFIG_ASAN=y -DCONFIG_UBSAN=y
+          if ./build_buggy/zephyr/zephyr.exe; then
+            echo "::error::buggy variant did not crash -- the regression proof no longer proves anything"
+            exit 1
+          fi
+          echo "buggy variant crashed as expected (exit code above is the proof, not a failure of this job)"
+
+  riot:
+    name: RIOT-OS adapter (native, CVE-2024-32018 regression)
+    runs-on: ubuntu-latest
+    container: riot/riotbuild
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: c-mz
+
+      - uses: actions/checkout@v4
+        with:
+          repository: RIOT-OS/RIOT
+          path: RIOT
+
+      - name: Adapter smoke test
+        working-directory: c-mz/tests/riot/smoke
+        run: |
+          RIOTBASE=${{ github.workspace }}/RIOT BOARD=native make all
+          ./bin/native*/fault_inject_riot_smoke.elf
+
+      - name: CVE-2024-32018 regression -- fixed variant (must pass)
+        working-directory: c-mz/tests/riot/nimble_scanlist_recv
+        run: |
+          RIOTBASE=${{ github.workspace }}/RIOT BOARD=native make all
+          ./bin/native*/nimble_scanlist_recv.elf
+
+      - name: CVE-2024-32018 regression -- buggy variant must still crash under ASan
+        working-directory: c-mz/tests/riot/nimble_scanlist_recv
+        run: |
+          RIOTBASE=${{ github.workspace }}/RIOT BOARD=native SCANLIST_REPRO_VARIANT=buggy make all-asan
+          if ./bin/native*/nimble_scanlist_recv.elf; then
+            echo "::error::buggy variant did not crash -- the regression proof no longer proves anything"
+            exit 1
+          fi
+          echo "buggy variant crashed as expected (exit code above is the proof, not a failure of this job)"
