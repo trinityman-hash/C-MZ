@@ -24,6 +24,22 @@ name: ci
 #   fixed the same way the RIOT adapter's two real build bugs were:
 #   by reading the actual failure, not by re-deriving from the command
 #   pattern harder.
+#
+# 2026-07-28: first real run on a GitHub-hosted runner failed both
+# zephyr and riot.
+#
+# - zephyr failed because `west zephyr-export` (which imports
+#   jsonschema transitively) ran before
+#   `pip install -r zephyr/scripts/requirements.txt`, which is what
+#   actually provides jsonschema. Fixed below by installing
+#   requirements before exporting.
+#
+# - riot failed because "Adapter smoke test" couldn't find
+#   $GITHUB_WORKSPACE/RIOT/Makefile.include even though the
+#   RIOT-OS/RIOT checkout step reported success. Added a
+#   "Verify checkouts landed where expected" step that fails fast
+#   with a full directory listing if that happens again, instead of
+#   surfacing a confusing downstream `make` error.
 
 on:
   push:
@@ -59,10 +75,6 @@ jobs:
           repo is a module, not a manifest repo, so zephyr's own
           west.yml is the manifest)
         run: |
-          west init -m https://github.com/zephyrproject-rtos/zephyr --mr main workspace
-          cd workspace
-          west update
-       run: |
           west init -m https://github.com/zephyrproject-rtos/zephyr --mr main workspace
           cd workspace
           west update
@@ -114,7 +126,16 @@ jobs:
         with:
           repository: RIOT-OS/RIOT
           path: RIOT
-          
+
+      # Added after the 2026-07-28 run: the smoke-test step failed
+      # with "Makefile.include: No such file or directory" even though
+      # both checkout steps above reported success. That's ambiguous
+      # by itself -- it doesn't say whether the checkout silently
+      # landed somewhere else, wrote nothing, or something else
+      # entirely. This step removes the ambiguity: it fails immediately
+      # with a full directory listing if RIOT isn't actually where the
+      # rest of this job assumes it is, instead of letting a confusing
+      # error surface three steps later inside `make`.
       - name: Verify checkouts landed where expected
         run: |
           echo "--- \$GITHUB_WORKSPACE ($GITHUB_WORKSPACE) ---"
@@ -127,7 +148,7 @@ jobs:
             echo "::error::RIOT checkout did not land at \$GITHUB_WORKSPACE/RIOT as expected -- see the listing above for what's actually there"
             exit 1
           fi
-          
+
       - name: Adapter smoke test
         working-directory: c-mz/tests/riot/smoke
         run: |
