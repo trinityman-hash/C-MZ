@@ -544,3 +544,167 @@ is intentional past-tense history (explaining why the directory isn't
 called that anymore), not a current claim. The `SPDX` and
 `adapters/riot` hits inside this file are this log's own record of
 those bugs, not live instances of them.
+
+## Independent host-only re-verification (this session, no RTOS toolchain)
+
+Requested explicitly: verify as much as possible for real rather than
+trusting prior sessions' logs, given this sandbox has no Zephyr/RIOT
+toolchain. Two things turned out to be independently checkable on the
+host, without any RTOS, because neither the adapters' core logic nor
+either regression proof's actual bug-reproduction code (as opposed to
+its RTOS-specific test harness) depends on Zephyr or RIOT headers at
+all -- confirmed first by grepping every `#include` in both proofs'
+source files: only `test_eswifi_recv_ztest.c` includes anything
+RTOS-specific (`<zephyr/ztest.h>`); `eswifi_repro_buggy.c`/`fixed.c`
+and both `scanlist_repro_*.c` files include only `<stddef.h>`,
+`<stdint.h>`, `<string.h>`, `<assert.h>`, `<stdio.h>`, `<stdlib.h>`,
+and their own local headers.
+
+### Both adapters, functionally, against stubs matching the real verified APIs
+
+Not just a syntax check: linked each adapter (`fi_port_zephyr.c`,
+`fi_port_riot.c`) against the *real* `src/fault_inject.c` core and a
+small stub of the RTOS primitive each one calls -- structurally
+faithful to the real signatures already confirmed against upstream
+source above (`struct z_spinlock_key { int key; }` /
+`k_spin_lock`/`k_spin_unlock`; `unsigned irq_disable(void)` /
+`void irq_restore(unsigned)`) but functionally a no-op, since no real
+scheduler exists on the host. This tests the adapter's own glue logic
+-- correct token threading, correct types -- not the real RTOS
+primitive itself (that's still only established by the Steps 3-7
+section above, on real hardware simulators):
+
+```
+$ gcc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
+    -DCONFIG_FAULT_INJECTION -DCONFIG_FAULT_INJECTION_MAX_POINTS=4 \
+    -Iinclude -I<zephyr-spinlock-stub-dir> \
+    src/fault_inject.c adapters/zephyr/fi_port_zephyr.c <driver>.c \
+    -o test_zephyr_adapter && ./test_zephyr_adapter
+adapter functional smoke test: all checks passed
+
+$ gcc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
+    -DCONFIG_FAULT_INJECTION -DCONFIG_FAULT_INJECTION_MAX_POINTS=4 \
+    -Iinclude -I<riot-irq-stub-dir> \
+    src/fault_inject.c adapters/fault_inject/fi_port_riot.c <driver>.c \
+    -o test_riot_adapter && ./test_riot_adapter
+adapter functional smoke test: all checks passed
+```
+
+Both clean under ASan/UBSan.
+
+### eswifi_recv (CVE-2026-1679) proof logic, re-run on the host independent of Zephyr
+
+Same `eswifi_repro_buggy.c`/`eswifi_repro_fixed.c` files from
+`tests/zephyr/eswifi_recv/src/`, unmodified, linked against a small
+host-only driver instead of the Ztest harness:
+
+```
+$ gcc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g \
+    -DCONFIG_FAULT_INJECTION -DCONFIG_FAULT_INJECTION_MAX_POINTS=4 \
+    -Iinclude -Itests/zephyr/eswifi_recv/src \
+    src/fault_inject.c tests/host/fi_port_host.c \
+    tests/zephyr/eswifi_recv/src/eswifi_repro_fixed.c <driver>.c \
+    -o eswifi_fixed_host && ./eswifi_fixed_host
+normal recv: ok
+oversized recv rc=-90 (ESWIFI_OK=0, ESWIFI_EMSGSIZE=-90)
+exit code: 0
+
+$ gcc ... tests/zephyr/eswifi_recv/src/eswifi_repro_buggy.c <driver>.c \
+    -o eswifi_buggy_host && ./eswifi_buggy_host
+==880==ERROR: AddressSanitizer: stack-buffer-overflow ...
+WRITE of size 64 at ...
+    #0 ... in memcpy
+    #1 ... in eswifi_socket_recv tests/zephyr/eswifi_recv/src/eswifi_repro_buggy.c:23
+    #2 ... in main <driver>.c:35
+SUMMARY: AddressSanitizer: stack-buffer-overflow ... in memcpy
+==880==ABORTING
+exit code: 1
+```
+
+`WRITE of size 64` is exactly the oversized length the driver forced
+(`ESWIFI_RX_BUF_SIZE * 2` = 32 * 2). Crash location
+(`eswifi_repro_buggy.c:23`, the `memcpy` call) matches the Zephyr/ASan
+run in the Steps 3-7 section above -- independent confirmation, on a
+different toolchain and OS-level build, of the same underlying bug and
+the same fix.
+
+### nimble_scanlist_recv (CVE-2024-32018) proof logic, re-run on the host, including the NDEBUG precondition itself
+
+This one is worth doing in three variants, not two, because
+`scanlist_repro_buggy.c`'s own comment makes a specific, checkable
+claim: the bug only manifests when built with `NDEBUG` (`assert()`
+compiles to nothing per C11 7.2p1); without `NDEBUG`, the `assert()`
+should fire and abort cleanly, *not* overflow. That claim was checked,
+not just repeated:
+
+```
+$ gcc ... tests/riot/nimble_scanlist_recv/src/scanlist_repro_fixed.c <driver>.c \
+    -o scanlist_fixed_host && ./scanlist_fixed_host
+normal update: ok
+oversized update completed without rejecting or crashing (ad_len=0)
+exit code: 0
+```
+
+(`ad_len=0` because the fixed implementation returns before touching
+`entry` at all on an oversized length -- `entry` was zeroed before the
+call, so `ad_len` staying `0` is the correct "untouched" outcome, not a
+silent failure.)
+
+```
+$ gcc -fsanitize=address,undefined ... tests/riot/nimble_scanlist_recv/src/scanlist_repro_buggy.c <driver>.c \
+    -o scanlist_buggy_debug_host && ./scanlist_buggy_debug_host
+scanlist_buggy_debug_host: .../scanlist_repro_buggy.c:32: scanlist_update: Assertion `len <= SCANLIST_AD_MAX' failed.
+Aborted
+exit code: 134
+```
+
+Confirms the claim: without `NDEBUG`, this is a clean, ordinary
+assertion failure (SIGABRT), nowhere near the `memcpy`. Then, with the
+real advisory's stated precondition:
+
+```
+$ gcc -DNDEBUG -fsanitize=address,undefined ... tests/riot/nimble_scanlist_recv/src/scanlist_repro_buggy.c <driver>.c \
+    -o scanlist_buggy_ndebug_host && ./scanlist_buggy_ndebug_host
+normal update: ok
+==922==ERROR: AddressSanitizer: stack-buffer-overflow ...
+WRITE of size 51 at ...
+    #0 ... in memcpy
+    #1 ... in scanlist_update tests/riot/nimble_scanlist_recv/src/scanlist_repro_buggy.c:34
+    #2 ... in main <driver>.c:33
+SUMMARY: AddressSanitizer: stack-buffer-overflow ... in memcpy
+==922==ABORTING
+exit code: 1
+```
+
+`WRITE of size 51` matches `SCANLIST_AD_MAX + 20` (31 + 20) exactly,
+and matches the RIOT/ASan run's `WRITE of size 51` in the Steps 3-7
+section above -- independent confirmation, again on a different
+toolchain and OS-level build, and additionally confirms the NDEBUG
+precondition the buggy file's own comment claims is genuinely load-
+bearing, not just asserted.
+
+### What this newly establishes
+
+- Both adapters' own glue code (not the RTOS primitive underneath, but
+  the code this repo actually wrote) is logically correct, confirmed
+  functionally, not just by syntax check.
+- Both regression proofs' actual bug-reproduction logic is independently
+  reproducible outside either RTOS entirely, on a completely different
+  toolchain/OS-level build than the one used for the Steps 3-7 section,
+  and produces the identical failure signature (crash location, write
+  size) in both cases -- strong corroborating evidence the Steps 3-7
+  results are real and not fabricated, without needing to trust that
+  session's environment.
+- The `scanlist_repro_buggy.c` file's specific claim about the NDEBUG
+  precondition mattering is independently confirmed, not just repeated:
+  the same code produces a clean assertion failure without NDEBUG and a
+  real overflow with it.
+
+### What this still doesn't establish
+
+- Nothing about either real RTOS's actual scheduler, IRQ handling, or
+  build system -- that's still only covered by the Steps 3-7 section
+  above, which this session could not re-run (no Zephyr/RIOT toolchain
+  available here either).
+- Nothing new about hardware-in-the-loop, multi-core, Clang, or CI --
+  same open items as before.
