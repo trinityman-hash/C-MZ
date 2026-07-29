@@ -1,5 +1,7 @@
 # C-MZ — Portable Fault-Injection Core for Embedded/RTOS Systems
 
+[![ci](https://github.com/trinityman-hash/C-MZ/actions/workflows/ci.yml/badge.svg)](https://github.com/trinityman-hash/C-MZ/actions/workflows/ci.yml)
+
 A small, deterministic fault-injection primitive — arm/disarm/hit-count,
 compiles to nothing when disabled — generalized out of
 [C-MSP](https://github.com/trinityman-hash/C-MSP)'s Zephyr-only
@@ -121,6 +123,13 @@ All of steps 1–8 from the original roadmap are complete and verified —
 portable core, host harness, both adapters, both regression proofs. See
 `docs/verification.md` for the real evidence.
 
+CI (`.github/workflows/ci.yml`) now actually runs `host`, `zephyr`, and
+`riot` on every push and pull request to `main`, on GitHub-hosted
+runners — not just by hand. The badge above reflects the real state of
+`main`, not an aspiration; see the workflow file's own comments for the
+run history (first attempt failed both RTOS jobs for documented reasons,
+fixed, now green) and what each job does and doesn't establish.
+
 Deliberately not done, per the project's own v0 scope, not missing work:
 - More than two RTOS adapters (no FreeRTOS, NuttX, etc.)
 - Probabilistic/interval/budget-based failure, a Shell live-arming
@@ -130,12 +139,6 @@ Deliberately not done, per the project's own v0 scope, not missing work:
   (RIOT-OS) — no QEMU, no physical hardware, either RTOS
 - Multi-core targets for either RTOS — both adapters' locking reasoning
   is explicitly single-core only (see each adapter's own file comments)
-- CI wiring — every command in `docs/verification.md` was run by hand
-  in the session that produced it, not on a schedule or on push
-- A LICENSE file. No SPDX header claims a license this repo doesn't
-  actually have attached — this is an open decision for the repo owner,
-  not an oversight (C-MSP's own handoff history records a prior session
-  wrongly claiming a LICENSE file existed; not repeating that here)
 - Publishing or announcing this anywhere, including upstream against
   either project's issue tracker
 
@@ -177,5 +180,5 @@ tracking is done — its content lives on in this README and in
 
 ## License
 
-Not yet chosen — see "Status" above. No SPDX headers are present in any
-file in this repo for the same reason.
+Apache License, Version 2.0 — see [`LICENSE`](LICENSE). No SPDX headers
+are added to individual source files; the LICENSE file alone governs.
