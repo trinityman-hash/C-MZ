@@ -708,3 +708,77 @@ bearing, not just asserted.
   available here either).
 - Nothing new about hardware-in-the-loop, multi-core, Clang, or CI --
   same open items as before.
+
+## Zephyr adapter smoke test: native_sim + qemu_cortex_m3 + qemu_x86 (this session)
+
+Scope: closes part of the "Any board/platform beyond native_sim" gap
+noted as deliberately out of v0 scope in the README. Adds
+`tests/zephyr/smoke/`, a Ztest suite mirroring `tests/riot/smoke/main.c`
+and `tests/host/test_fault_inject_core.c`'s structure, run via Twister
+on three platforms: `native_sim` (already covered by `eswifi_recv`, used
+here as the baseline), `qemu_cortex_m3` (real ARMv7-M,
+`k_spin_lock`/`k_spin_unlock` via PRIMASK/BASEPRI), and `qemu_x86` (real
+x86 protected mode, `k_spin_lock`/`k_spin_unlock` via `cli`/`sti`). This
+does NOT cover RIOT-OS board expansion (still `BOARD=native` only),
+physical hardware (still none, either RTOS), or multi-core (both
+adapters' locking is still single-core only by design).
+
+Toolchain used: Zephyr SDK 1.0.1 (`arm-zephyr-eabi` for
+`qemu_cortex_m3`, `x86_64-zephyr-elf` for `qemu_x86`; `native_sim` uses
+the host `gcc` 13.3.0 directly, same as prior sessions), West v1.5.0,
+Zephyr `v4.4.0-9928-g577e42ad187`, QEMU 8.2.2 (both `qemu-system-arm`
+and `qemu-system-i386`).
+
+```
+$ west twister -p native_sim -p qemu_cortex_m3 -p qemu_x86 \
+    -T tests/zephyr/smoke \
+    -x=ZEPHYR_EXTRA_MODULES=/path/to/this/repo --inline-logs
+...
+INFO    - 3 test scenarios (9 configurations) selected, 6 configurations filtered (6 by static filter, 0 at runtime).
+INFO    - 3 of 3 executed test configurations passed (100.00%), 0 built (not run), 0 failed, 0 errored, with no warnings in 136.02 seconds.
+INFO    - 21 of 21 executed test cases passed (100.00%) on 3 out of total 1655 platforms (0.18%).
+```
+
+Per-platform breakdown from the resulting `twister.json`:
+```
+native_sim/native        passed  7 testcases
+qemu_cortex_m3/ti_lm3s6965  passed  7 testcases
+qemu_x86/atom             passed  7 testcases
+```
+
+The three platforms were also each run directly outside Twister first
+(build the same way, then execute the resulting `zephyr.elf`/`zephyr.exe`
+by hand under the matching QEMU invocation or directly for
+`native_sim`), as an independent cross-check that Twister's own report
+isn't the only evidence -- all three showed the identical
+`SUITE PASS - 100.00% ... pass = 7, fail = 0, skip = 0, total = 7`
+Ztest summary Twister's report is built from.
+
+### What this establishes
+
+- The Zephyr adapter's actual locking glue
+  (`adapters/zephyr/fi_port_zephyr.c`) is functionally correct under two
+  real, independent interrupt-masking mechanisms beyond `native_sim`'s
+  POSIX-signal stand-in -- a lock/unlock bug masked by native_sim's
+  timing has two more genuinely different real mechanisms to pass
+  through here.
+- The documented Quick Start command for this target (now added to
+  README.md) is the literal command that was run, not a plausible-
+  looking guess.
+- CI's `zephyr` job now runs this same Twister invocation (see
+  `.github/workflows/ci.yml`) -- not yet observed on a real
+  GitHub-hosted runner, same caveat as every other CI job in that file
+  until an actual run's logs are looked at.
+
+### What this still doesn't establish
+
+- RIOT-OS board coverage beyond `BOARD=native` -- untouched by this
+  session.
+- Physical hardware, for either RTOS -- `qemu_cortex_m3`/`qemu_x86` are
+  QEMU, not real silicon; timing, real DMA/cache effects, and genuine
+  multi-core interrupt controllers are all still unverified.
+- Multi-core -- both adapters' `fi_port_lock`/`fi_port_unlock` remain
+  explicitly single-core-only by construction; nothing here changes
+  that or tests it.
+- Clang -- these builds used the Zephyr SDK's GCC-based toolchains, same
+  gap noted in the Step 1+2 section above.
