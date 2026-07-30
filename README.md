@@ -60,6 +60,22 @@ Ztest suite on `native_sim`. Needs `cmake`, `ninja`,
 build on x86_64), and `ZEPHYR_TOOLCHAIN_VARIANT=host` — no Zephyr SDK or
 physical hardware.
 
+**Zephyr, across real target architectures** (adapter smoke test,
+`native_sim` + two QEMU-emulated targets, not just the host arch):
+```sh
+west twister -p native_sim -p qemu_cortex_m3 -p qemu_x86 \
+  -T tests/zephyr/smoke \
+  -x=ZEPHYR_EXTRA_MODULES=/path/to/this/repo
+```
+Same adapter (`adapters/zephyr/fi_port_zephyr.c`), same test file, run on
+three genuinely different `k_spin_lock` implementations: `native_sim`
+(POSIX-signal-based), `qemu_cortex_m3` (real ARMv7-M PRIMASK/BASEPRI
+masking), `qemu_x86` (real x86 `cli`/`sti`). Needs the Zephyr SDK's
+`arm-zephyr-eabi` and `x86_64-zephyr-elf` toolchains in addition to the
+host toolchain `eswifi_recv` alone needs — see
+`tests/zephyr/smoke/src/test_fault_inject_smoke.c`'s header for why
+these two targets specifically. No physical hardware; QEMU only.
+
 **RIOT-OS, via its own build system** (real critical-section locking,
 `irq_disable`/`irq_restore`):
 ```sh
@@ -123,6 +139,16 @@ All of steps 1–8 from the original roadmap are complete and verified —
 portable core, host harness, both adapters, both regression proofs. See
 `docs/verification.md` for the real evidence.
 
+Beyond the original 8 steps: the Zephyr adapter is now additionally
+verified on two real QEMU-emulated targets besides `native_sim` —
+`qemu_cortex_m3` and `qemu_x86` — via `tests/zephyr/smoke/`, run through
+the same `west twister` path CI uses, 21/21 test cases passing across
+all three platforms. This exercises `k_spin_lock` under two genuinely
+different real interrupt-masking mechanisms (ARMv7-M PRIMASK/BASEPRI,
+x86 `cli`/`sti`), not just `native_sim`'s POSIX-signal stand-in or the
+build host's own scheduler timing. RIOT-OS's board coverage is
+unchanged (`BOARD=native` only) — this expansion is Zephyr-only so far.
+
 CI (`.github/workflows/ci.yml`) now actually runs `host`, `zephyr`, and
 `riot` on every push and pull request to `main`, on GitHub-hosted
 runners — not just by hand. The badge above reflects the real state of
@@ -135,8 +161,10 @@ Deliberately not done, per the project's own v0 scope, not missing work:
 - Probabilistic/interval/budget-based failure, a Shell live-arming
   interface, additional fault kinds beyond "force a return value" — all
   already out of scope for C-MSP itself, carried forward here
-- Any board/platform beyond `native_sim` (Zephyr) and `BOARD=native`
-  (RIOT-OS) — no QEMU, no physical hardware, either RTOS
+- RIOT-OS board coverage beyond `BOARD=native`, and any physical
+  hardware for either RTOS — Zephyr now also covers `qemu_cortex_m3` and
+  `qemu_x86` (see above and `tests/zephyr/smoke/`), but that's still
+  QEMU, not hardware, and still Zephyr-only
 - Multi-core targets for either RTOS — both adapters' locking reasoning
   is explicitly single-core only (see each adapter's own file comments)
 - Publishing or announcing this anywhere, including upstream against
@@ -166,6 +194,9 @@ tests/
                               adapters)
   zephyr/eswifi_recv/         CVE-2026-1679 regression proof, ported from
                               C-MSP, re-run against this repo's core+adapter
+  zephyr/smoke/                Zephyr adapter smoke test, run on native_sim +
+                              qemu_cortex_m3 + qemu_x86 -- three genuinely
+                              different k_spin_lock implementations
   riot/smoke/                 RIOT-OS adapter smoke test
   riot/nimble_scanlist_recv/  CVE-2024-32018 regression proof (real bug,
                               found by research -- see docs/verification.md)
