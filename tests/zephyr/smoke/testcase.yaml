@@ -1,0 +1,28 @@
+# Adapter smoke test across real, independent targets -- not just
+# native_sim. See src/test_fault_inject_smoke.c's header comment for
+# why native_sim, qemu_cortex_m3, and qemu_x86 specifically, and why
+# ASan/UBSan are deliberately not enabled here (that stays
+# eswifi_recv's job, on native_sim only, where it actually works).
+
+common:
+  tags:
+    - fault_injection
+    - portable_core_regression
+    - adapter_smoke
+  harness: ztest
+  extra_configs:
+    - CONFIG_FAULT_INJECTION=y
+    - CONFIG_FAULT_INJECTION_MAX_POINTS=8
+
+tests:
+  fault_injection.smoke.native_sim:
+    platform_allow:
+      - native_sim
+
+  fault_injection.smoke.qemu_cortex_m3:
+    platform_allow:
+      - qemu_cortex_m3
+
+  fault_injection.smoke.qemu_x86:
+    platform_allow:
+      - qemu_x86
